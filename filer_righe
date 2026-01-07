@@ -1,0 +1,102 @@
+#!/bin/bash
+# ============================================================
+# filtra_descrivi.sh
+#
+# Legge un file riga per riga, stampa solo le righe NON vuote
+# (considerando "vuote" anche le righe fatte solo di spazi/tab),
+# e alla fine stampa quante righe vuote e non vuote ha trovato.
+#
+# Include una piccola "pulizia" per file Windows (CRLF):
+# rimuove eventuale '\r' a fine riga.
+# ============================================================
+
+set -euo pipefail
+# -e: ferma lo script se un comando fallisce (exit code != 0)
+# -u: errore se usi variabili non definite
+# -o pipefail: se una pipeline fallisce, lo script lo considera errore
+
+# ------------------------------------------------------------
+# CONTROLLO 1: almeno un argomento?
+# ------------------------------------------------------------
+if [ "$#" -lt 1 ]; then
+  echo "Uso: $0 FILE" >&2
+  exit 1
+fi
+
+FILE="$1"
+
+# ------------------------------------------------------------
+# CONTROLLO 2: il file esiste ed è un file "normale"?
+# ------------------------------------------------------------
+if [ ! -f "$FILE" ]; then
+  echo "Errore: file non trovato: $FILE" >&2
+  exit 1
+fi
+
+vuote=0
+non_vuote=0
+
+# ------------------------------------------------------------
+# CICLO DI LETTURA RIGA PER RIGA (il cuore dello script)
+#
+# while ...; do ... done < "$FILE"
+#
+# - "done < "$FILE"" significa: invece di leggere dalla tastiera,
+#   il ciclo legge dal file.
+#
+# - "IFS=" (vuoto) impedisce che Bash "tagli" spazi iniziali/finali
+#   o spezzetti la riga in più campi.
+#
+# - "read -r NOME" legge una singola riga:
+#   * senza -r, i backslash "\" potrebbero essere interpretati
+#   * con -r, la riga viene letta "così com'è" (più sicuro)
+#
+# Ogni iterazione del ciclo:
+# 1) prende una riga dal file
+# 2) la mette nella variabile NOME
+# 3) decide se è vuota o no
+# 4) stampa solo le righe non vuote
+# ------------------------------------------------------------
+while IFS= read -r NOME; do
+
+  # ----------------------------------------------------------
+  # Se il file arriva da Windows, le righe finiscono spesso con:
+  #   \r\n   (CRLF)
+  # read rimuove \n ma NON rimuove \r.
+  #
+  # Questa riga elimina un eventuale '\r' finale.
+  # Se non c'è, non cambia nulla.
+  # ----------------------------------------------------------
+  NOME=${NOME%$'\r'}
+
+  # ----------------------------------------------------------
+  # "Riga vuota" per noi significa:
+  # - riga davvero vuota
+  # - oppure riga con solo spazi e/o tab
+  #
+  # [[ ... =~ regex ]] usa una regex:
+  # ^           inizio stringa
+  # [[:space:]] spazi, tab, ecc.
+  # *           ripetuto zero o più volte
+  # $           fine stringa
+  #
+  # Quindi: "solo spazi (o niente) dall'inizio alla fine"
+  # ----------------------------------------------------------
+  if [[ "$NOME" =~ ^[[:space:]]*$ ]]; then
+    # NOTA: con "set -e" evitiamo ((vuote++)) perché quando vuote è 0
+    # può far uscire lo script. Usiamo += 1 che è sempre "safe".
+    ((vuote+=1))
+    continue
+  fi
+
+  # Se siamo qui, la riga NON è vuota
+  ((non_vuote+=1))
+  echo "$NOME"
+
+done < "$FILE"
+
+# ------------------------------------------------------------
+# Report finale
+# ------------------------------------------------------------
+echo "Righe vuote: $vuote"
+echo "Righe non vuote: $non_vuote"
